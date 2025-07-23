@@ -1,6 +1,9 @@
+import express from "express";
 import { db } from "../firebase.js";
 
-export default async function handler(req, res) {
+const router = express.Router();
+
+router.get("/", async (req, res) => {
   try {
     const doc = await db.collection("estadisticas").doc("resumen").get();
     if (!doc.exists) {
@@ -11,4 +14,6 @@ export default async function handler(req, res) {
   } catch (err) {
     res.status(500).json({ error: "Error al obtener estadísticas" });
   }
-}
+});
+
+export default router;

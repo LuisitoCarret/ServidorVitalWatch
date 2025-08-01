@@ -4,7 +4,7 @@ const router = express.Router();
 
 // GET /regiones/:region/pacientes
 router.get("/:region/pacientes", async (req, res) => {
-  const regionParam = decodeURIComponent(req.params.region).trim();
+  const regionParam = decodeURIComponent(req.params.region).trim().toLowerCase();
 
   try {
     const snapshot = await db.collection('eventos_sync')

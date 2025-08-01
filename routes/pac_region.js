@@ -3,7 +3,7 @@ import { db } from "../firebase.js"; // Asegúrate que `firebase.js` exporta `db
 const router = express.Router();
 
 // GET /regiones/:region/pacientes
-router.get("/regiones/:region/pacientes", async (req, res) => {
+router.get("/:region/pacientes", async (req, res) => {
   const regionParam = decodeURIComponent(req.params.region).toLowerCase();
 
   try {

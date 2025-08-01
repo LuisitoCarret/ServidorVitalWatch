@@ -1,49 +1,65 @@
 import express from "express";
-import { db } from "../firebase.js"; // Asegúrate de que `firebase.js` exporta `db` correctamente
+import { db } from "../firebase.js"; // Asegúrate que exportas correctamente `db`
 
 const router = express.Router();
 
-router.get("/resumen", async (req, res) => {
+// GET /api/estadisticas-nivel-alerta
+router.get("/estadistica", async (req, res) => {
   try {
-    // 1. Obtener todos los pacientes
-    const pacientesSnapshot = await db.collection("pacientes").get();
+    const eventosRef = db.collection("eventos_sync");
+    const snapshot = await eventosRef.get();
 
-    // 2. Inicializar contadores
-    let estables = 0;
-    let alerta = 0;
-    let criticos = 0;
-
-    // 3. Recorrer cada paciente y obtener su último evento
-    for (const doc of pacientesSnapshot.docs) {
-      const pacienteId = doc.id;
-
-      const eventos = await db.collection("eventos_sync")
-        .where("id_paciente", "==", pacienteId) // 🔁 Ya no convertir a Number
-        .orderBy("timestamp", "desc")
-        .limit(1)
-        .get();
-
-      if (!eventos.empty) {
-        const evento = eventos.docs[0].data();
-        const nivel = evento.nivelAlerta?.toLowerCase();
-
-        if (nivel === "verde") estables++;
-        else if (nivel === "amarillo") alerta++;
-        else if (nivel === "rojo") criticos++;
-      }
+    if (snapshot.empty) {
+      return res.status(404).json({ mensaje: "No hay eventos registrados." });
     }
 
-    const total = estables + alerta + criticos;
+    const eventosPorPaciente = new Map();
+
+    // Obtener el evento más reciente por cada paciente
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      const idPaciente = data.id_paciente;
+      const timestamp = data.timestamp;
+
+      if (!eventosPorPaciente.has(idPaciente)) {
+        eventosPorPaciente.set(idPaciente, data);
+      } else {
+        const eventoActual = eventosPorPaciente.get(idPaciente);
+        if (timestamp > eventoActual.timestamp) {
+          eventosPorPaciente.set(idPaciente, data);
+        }
+      }
+    });
+
+    // Inicializar contadores
+    let estables = 0;
+    let criticos = 0;
+    let alerta = 0;
+
+    // Clasificar pacientes por su nivelAlerta
+    eventosPorPaciente.forEach(evento => {
+      const nivel = evento.nivelAlerta?.toLowerCase();
+      if (nivel === "verde") {
+        estables++;
+      } else if (nivel === "amarillo") {
+        criticos++;
+      } else if (nivel === "rojo") {
+        alerta++;
+      }
+    });
+
+    const total = estables + criticos + alerta;
 
     return res.json({
       estables,
-      alerta,
       criticos,
+      alerta,
       total
     });
+
   } catch (error) {
-    console.error("Error al obtener resumen:", error);
-    return res.status(500).json({ error: "Error interno", detalle: error.message });
+    console.error("Error al obtener estadísticas:", error);
+    res.status(500).json({ mensaje: "Error del servidor", error: error.message });
   }
 });
 

@@ -1,5 +1,5 @@
 import express from "express";
-import { db } from "../firebase.js"; // Asegúrate que exportas correctamente `db`
+import { db } from "../firebase.js"; // Asegúrate de tener exportado `db` correctamente
 
 const router = express.Router();
 
@@ -15,7 +15,7 @@ router.get("/estadistica", async (req, res) => {
 
     const eventosPorPaciente = new Map();
 
-    // Obtener el evento más reciente por cada paciente
+    // Obtener el evento más reciente por paciente
     snapshot.forEach(doc => {
       const data = doc.data();
       const idPaciente = data.id_paciente;
@@ -33,27 +33,27 @@ router.get("/estadistica", async (req, res) => {
 
     // Inicializar contadores
     let estables = 0;
-    let criticos = 0;
     let alerta = 0;
+    let criticos = 0;
 
-    // Clasificar pacientes por su nivelAlerta
+    // Clasificación según nivelAlerta
     eventosPorPaciente.forEach(evento => {
       const nivel = evento.nivelAlerta?.toLowerCase();
       if (nivel === "verde") {
         estables++;
       } else if (nivel === "amarillo") {
-        criticos++;
-      } else if (nivel === "rojo") {
         alerta++;
+      } else if (nivel === "rojo") {
+        criticos++;
       }
     });
 
-    const total = estables + criticos + alerta;
+    const total = estables + alerta + criticos;
 
     return res.json({
       estables,
-      criticos,
       alerta,
+      criticos,
       total
     });
 

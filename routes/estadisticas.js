@@ -1,6 +1,7 @@
-const express = require("express");
+import express from "express";
+import { db } from "../firebase.js"; // Asegúrate que el archivo se llame `firebase.js` y usa la extensión `.js`
+
 const router = express.Router();
-const { db } = require("../firebase");
 
 // Calcular tiempo desde timestamp
 function calcularMinutosDesde(timestamp) {
@@ -56,4 +57,4 @@ router.get("/resumen", async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;

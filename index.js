@@ -15,7 +15,7 @@ app.use("/pacientes", pacientesRoute);
 app.use("/estadisticas", estadisticasRoute);
 app.use("/signos", signosRoute);
 app.use("/estados",estadoRoute);
-app.use("/pregion",regionRoute);
+app.use("/regiones",regionRoute);
 
 // Puerto
 const PORT = process.env.PORT || 3000;

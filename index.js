@@ -13,7 +13,7 @@ app.use(cors());
 app.use("/pacientes", pacientesRoute);
 app.use("/estadisticas", estadisticasRoute);
 app.use("/signos", signosRoute);
-app.use("/estados",estadisticasRoute);
+app.use("/estados",estadoRoute);
 
 // Puerto
 const PORT = process.env.PORT || 3000;

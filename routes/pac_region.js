@@ -1,49 +1,59 @@
 import express from "express";
-import { db } from "../firebase.js"; // Asegúrate que `firebase.js` exporta `db`
+import { db } from "../firebase.js"; // Asegúrate que `firebase.js` exporta correctamente `db`
+
 const router = express.Router();
 
-// GET /regiones/:region/pacientes
-router.get("/:region/pacientes", async (req, res) => {
-  const regionParam = decodeURIComponent(req.params.region).trim().toLowerCase();
-
+router.get("/pacientes", async (req, res) => {
   try {
-    const snapshot = await db.collection('eventos_sync')
-      .where('region', '==', regionParam)
-      .get();
+    const { estado, region } = req.query;
 
-    if (snapshot.empty) {
-      return res.status(404).json({ mensaje: 'No se encontraron pacientes en esta región' });
+    if (!estado || !region) {
+      return res.status(400).json({ mensaje: "Faltan parámetros: estado y región son requeridos." });
     }
 
-    const pacientes = [];
+    const pacientesRef = db.collection("pacientes");
+    const eventosRef = db.collection("eventos_sync");
 
-    snapshot.forEach(doc => {
-      const data = doc.data();
+    const pacientesSnapshot = await pacientesRef
+      .where("estado", "==", estado)
+      .where("region", "==", region)
+      .get();
 
-      // Normalizar nivel de alerta
-      let nivel = 'estable';
-      if (data.nivelAlerta?.toLowerCase() === 'rojo') nivel = 'crítico';
-      else if (data.nivelAlerta?.toLowerCase() === 'amarillo') nivel = 'alerta';
+    if (pacientesSnapshot.empty) {
+      return res.status(404).json({ mensaje: "No se encontraron pacientes en esa región." });
+    }
 
-      pacientes.push({
-        id: data.id || doc.id,
-        nombre: data.nombre || 'Desconocido',
-        nivelAlerta: nivel,
-        ritmoCardiaco: data.ritmoCardiaco || 0,
-        temperatura: data.temperatura || 0,
-        oxigenacion: data.oxigenacion || 0,
-        ubicacion: `${(data.municipio || '').trim()}, ${(data.colonia || '').trim()}`
-      });
-    });
+    const pacientesList = [];
 
-    res.json({
-      region: regionParam,
-      pacientes
-    });
+    for (const doc of pacientesSnapshot.docs) {
+      const pacienteId = doc.id;
+      const paciente = doc.data();
+
+      const eventosQuery = await eventosRef
+        .where("id_paciente", "==", pacienteId)
+        .orderBy("timestamp", "desc")
+        .limit(1)
+        .get();
+
+      if (!eventosQuery.empty) {
+        const evento = eventosQuery.docs[0].data();
+
+        pacientesList.push({
+          id: pacienteId,
+          nombre: paciente.nombre || "Desconocido",
+          estado: paciente.estado || "Sin estado",
+          ritmo_cardiaco: evento.ritmo_cardiaco || null,
+          oxigenacion: evento.oxigenacion || null,
+          ubicacion: `${paciente.estado}, ${paciente.region}`,
+        });
+      }
+    }
+
+    res.json({ pacientes: pacientesList });
 
   } catch (error) {
-    console.error('Error al obtener pacientes:', error);
-    res.status(500).json({ error: 'Error interno', detalle: error.message });
+    console.error("Error al obtener pacientes por región:", error);
+    res.status(500).json({ mensaje: "Error del servidor", error: error.message });
   }
 });
 

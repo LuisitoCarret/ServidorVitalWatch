@@ -1,20 +1,27 @@
 //Primer endpoint
 
 import express from "express";
-import { db } from "../firebase.js";
+import { db, admin } from "../firebase.js";
 
 const router = express.Router();
 
-// Calcular minutos desde timestamp
-function calcularMinutosDesde(timestamp) {
-  const ms = timestamp.toString().length === 13 ? timestamp : timestamp * 1000;
-  const ahora = new Date();
-  const evento = new Date(ms);
-  const diferenciaMs = ahora - evento;
-  return `${Math.floor(diferenciaMs / 60000)} min`;
+// Función para dar formato al tiempo
+function formatoTiempo(ms) {
+  const totalSegundos = Math.floor(ms / 1000);
+  const h = Math.floor(totalSegundos / 3600);
+  const m = Math.floor((totalSegundos % 3600) / 60);
+
+  if (totalSegundos < 60) {
+    return `${totalSegundos} seg`;
+  }
+
+  const partes = [];
+  if (h > 0) partes.push(`${h} h`);
+  partes.push(`${m} min`);
+  return partes.join(" ");
 }
 
-// Función para obtener nivel más crítico
+// Comparación de niveles de alerta
 function nivelMasCritico(actual, nuevo) {
   const niveles = { verde: 1, amarillo: 2, rojo: 3 };
   return niveles[nuevo] > niveles[actual] ? nuevo : actual;
@@ -31,7 +38,7 @@ router.get("/estadistica", async (req, res) => {
 
     const eventosPorPaciente = new Map();
 
-    // Último evento por paciente
+    // Obtener último evento por paciente
     snapshot.forEach(doc => {
       const data = doc.data();
       const idPaciente = data.id_paciente;
@@ -47,23 +54,22 @@ router.get("/estadistica", async (req, res) => {
       }
     });
 
-    // Contadores y estructuras auxiliares
     let estables = 0;
     let alerta = 0;
     let criticos = 0;
     const Pacientes_Criticos = [];
-
-    const estadosResumen = new Map(); // Map<estado, nivel>
+    const estadosResumen = new Map();
 
     for (const [id, evento] of eventosPorPaciente.entries()) {
       const nivel = evento.nivelAlerta?.toLowerCase();
-      const pacienteDoc = await db.collection("pacientes").doc(id).get();
+      const pacienteRef = db.collection("pacientes").doc(id);
+      const pacienteDoc = await pacienteRef.get();
       if (!pacienteDoc.exists) continue;
 
       const paciente = pacienteDoc.data();
       const estadoPaciente = paciente.estado || "Desconocido";
 
-      // Actualizar el estado si es más crítico
+      // Actualizar resumen de estado por región
       if (!estadosResumen.has(estadoPaciente)) {
         estadosResumen.set(estadoPaciente, nivel);
       } else {
@@ -71,23 +77,42 @@ router.get("/estadistica", async (req, res) => {
         estadosResumen.set(estadoPaciente, nivelMasCritico(nivelAnterior, nivel));
       }
 
-      // Contadores globales
-      if (nivel === "verde") estables++;
-      else if (nivel === "amarillo") alerta++;
-      else if (nivel === "rojo") {
+      // Acciones según el nivel de alerta
+      if (nivel === "verde" || nivel === "amarillo") {
+        if (paciente.inicio_riesgo) {
+          await pacienteRef.update({
+            inicio_riesgo: admin.firestore.FieldValue.delete()
+          });
+        }
+        if (nivel === "verde") estables++;
+        else alerta++;
+      }
+
+      if (nivel === "rojo") {
         criticos++;
+
+        let inicio = paciente.inicio_riesgo;
+
+        // Si no tiene tiempo de inicio, asignarlo ahora
+        if (!inicio) {
+          inicio = Date.now();
+          await pacienteRef.update({ inicio_riesgo: inicio });
+        }
+
+        const diferenciaMs = Date.now() - inicio;
+        const tiempo_en_riesgo = formatoTiempo(diferenciaMs);
+
         Pacientes_Criticos.push({
           id,
           nombre: paciente.nombre || paciente.usuario || "Sin nombre",
           estado: estadoPaciente,
-          tiempo_en_riesgo: calcularMinutosDesde(evento.timestamp)
+          tiempo_en_riesgo
         });
       }
     }
 
     const total = estables + alerta + criticos;
 
-    // Convertir mapa de estados a array
     const estados = Array.from(estadosResumen.entries()).map(([nombre, estado]) => ({
       nombre,
       estado
@@ -109,3 +134,4 @@ router.get("/estadistica", async (req, res) => {
 });
 
 export default router;
+

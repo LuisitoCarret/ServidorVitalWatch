@@ -1,5 +1,7 @@
+//Tercero endpoint
+
 import express from "express";
-import { db } from "../firebase.js"; // asegúrate de usar la extensión `.js` y exportar correctamente en `firebase.js`
+import { db } from "../firebase.js";
 
 const router = express.Router();
 
@@ -23,51 +25,51 @@ router.get("/:estadoId/detalle", async (req, res) => {
       return res.status(400).json({ error: "ID de estado no válido" });
     }
 
-    // Obtener pacientes del estado
     const pacientesSnapshot = await db.collection("pacientes")
       .where("estado", "==", nombreEstado)
       .get();
 
+    const totalPacientesEstado = pacientesSnapshot.size;
+
     const regiones = {};
-    let totalPacientes = 0;
 
     for (const doc of pacientesSnapshot.docs) {
       const paciente = doc.data();
       const pacienteId = doc.id;
       const region = paciente.region || "Sin región";
 
-      // Obtener evento más reciente del paciente
       const eventos = await db.collection("eventos_sync")
-        .where("user_id", "==", pacienteId)
+        .where("id_paciente", "==", pacienteId)
         .orderBy("timestamp", "desc")
         .limit(1)
         .get();
 
       const evento = eventos.docs[0]?.data();
-      const color = evento?.nivelAlerta?.toLowerCase(); // "rojo", "amarillo", "verde"
+      const color = String(evento?.nivelAlerta || "").toLowerCase();
 
       if (!regiones[region]) {
         regiones[region] = {
           nombre: region,
-          pacientes: 0,
+          totalPacientes: 0,
           estables: 0,
           alerta: 0,
           criticos: 0
         };
       }
 
-      regiones[region].pacientes += 1;
-      totalPacientes += 1;
+      regiones[region].totalPacientes += 1;
 
       if (color === "verde") regiones[region].estables += 1;
       else if (color === "amarillo") regiones[region].alerta += 1;
       else if (color === "rojo") regiones[region].criticos += 1;
     }
 
+    const regionesOrdenadas = Object.values(regiones).sort((a, b) => b.criticos - a.criticos);
+
     return res.json({
       estado: nombreEstado,
-      total_pacientes: totalPacientes,
-      regiones: Object.values(regiones)
+      totalPacientesEstado,
+      regiones: regionesOrdenadas
     });
 
   } catch (error) {
@@ -77,3 +79,4 @@ router.get("/:estadoId/detalle", async (req, res) => {
 });
 
 export default router;
+

@@ -1,3 +1,5 @@
+//Primer endpoint
+
 import express from "express";
 import { db } from "../firebase.js";
 
@@ -10,6 +12,12 @@ function calcularMinutosDesde(timestamp) {
   const evento = new Date(ms);
   const diferenciaMs = ahora - evento;
   return `${Math.floor(diferenciaMs / 60000)} min`;
+}
+
+// Función para obtener nivel más crítico
+function nivelMasCritico(actual, nuevo) {
+  const niveles = { verde: 1, amarillo: 2, rojo: 3 };
+  return niveles[nuevo] > niveles[actual] ? nuevo : actual;
 }
 
 router.get("/estadistica", async (req, res) => {
@@ -39,48 +47,63 @@ router.get("/estadistica", async (req, res) => {
       }
     });
 
-    // Contadores y pacientes críticos
+    // Contadores y estructuras auxiliares
     let estables = 0;
     let alerta = 0;
     let criticos = 0;
     const Pacientes_Criticos = [];
 
+    const estadosResumen = new Map(); // Map<estado, nivel>
+
     for (const [id, evento] of eventosPorPaciente.entries()) {
       const nivel = evento.nivelAlerta?.toLowerCase();
+      const pacienteDoc = await db.collection("pacientes").doc(id).get();
+      if (!pacienteDoc.exists) continue;
 
-      if (nivel === "verde") {
-        estables++;
-      } else if (nivel === "amarillo") {
-        alerta++;
-      } else if (nivel === "rojo") {
+      const paciente = pacienteDoc.data();
+      const estadoPaciente = paciente.estado || "Desconocido";
+
+      // Actualizar el estado si es más crítico
+      if (!estadosResumen.has(estadoPaciente)) {
+        estadosResumen.set(estadoPaciente, nivel);
+      } else {
+        const nivelAnterior = estadosResumen.get(estadoPaciente);
+        estadosResumen.set(estadoPaciente, nivelMasCritico(nivelAnterior, nivel));
+      }
+
+      // Contadores globales
+      if (nivel === "verde") estables++;
+      else if (nivel === "amarillo") alerta++;
+      else if (nivel === "rojo") {
         criticos++;
-
-        // Buscar paciente
-        const pacienteDoc = await db.collection("pacientes").doc(id).get();
-        if (pacienteDoc.exists) {
-          const paciente = pacienteDoc.data();
-          Pacientes_Criticos.push({
-            id,
-            nombre: paciente.nombre || paciente.usuario || "Sin nombre",
-            estado: paciente.estado || "Desconocido",
-            tiempo_en_riesgo: calcularMinutosDesde(evento.timestamp)
-          });
-        }
+        Pacientes_Criticos.push({
+          id,
+          nombre: paciente.nombre || paciente.usuario || "Sin nombre",
+          estado: estadoPaciente,
+          tiempo_en_riesgo: calcularMinutosDesde(evento.timestamp)
+        });
       }
     }
 
     const total = estables + alerta + criticos;
+
+    // Convertir mapa de estados a array
+    const estados = Array.from(estadosResumen.entries()).map(([nombre, estado]) => ({
+      nombre,
+      estado
+    }));
 
     return res.json({
       estables,
       alerta,
       criticos,
       total,
-      Pacientes_Criticos
+      pacientes_criticos: Pacientes_Criticos,
+      estados
     });
 
   } catch (error) {
-    console.error("Error en /estadisticas/resumen:", error);
+    console.error("Error en /estadistica:", error);
     res.status(500).json({ mensaje: "Error del servidor", error: error.message });
   }
 });

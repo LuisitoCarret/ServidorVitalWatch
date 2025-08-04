@@ -1,3 +1,5 @@
+
+
 import express from "express";
 import { db } from "../firebase.js"; // Asegúrate de que el archivo se llame `firebase.js` y uses la extensión
 
